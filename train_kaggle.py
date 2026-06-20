@@ -30,6 +30,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--val-fraction", type=float, default=0.2, help="Validation split fraction")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
+        "--max-images",
+        type=int,
+        default=None,
+        help="Numero massimo di immagini da usare (None = tutte)",
+    )
+    parser.add_argument(
         "--project",
         type=Path,
         default=Path("/kaggle/working/runs/body_parts"),
@@ -51,6 +57,7 @@ def main() -> int:
         prepared_root=prepared_root,
         val_fraction=args.val_fraction,
         seed=args.seed,
+        max_images=args.max_images,
     )
     print(f"Dataset YOLO pronto: {data_yaml}")
 

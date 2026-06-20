@@ -1,0 +1,6 @@
+ultralytics
+torch
+pyyaml
+streamlit
+pandas
+opencv-python

@@ -1,0 +1,8 @@
+path: DATASET
+train: images/train
+val: images/val
+
+names:
+  0: testa
+  1: mano
+  2: busto

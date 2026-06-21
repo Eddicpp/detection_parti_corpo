@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""
-Merge multiple standardized datasets into a single unified dataset.
-Useful for combining COCO, custom-labeled, and other datasets.
+"""Merge multiple YOLO-formatted datasets into one unified dataset.
+
+Purpose:
+- Combine standardized sources (COCO-converted, manually labeled, others) into a single
+    train/val YOLO dataset ready for training.
+
+Datasets expected:
+- Input directories in YOLO format (images + labels), optionally already split.
 """
 
 from __future__ import annotations

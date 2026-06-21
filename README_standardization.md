@@ -89,7 +89,9 @@ Output:
 ### 4. Allenare il modello
 
 ```bash
-python train_local_cuda.py \
+python train_hierarchical.py \
+  --dataset-dir-stage1 dataset/standardized_datasets/hierarchical/person_stage \
+  --dataset-dir-stage2 dataset/standardized_datasets/hierarchical/parts_stage \
   --dataset-dir dataset/standardized_datasets/unified_body_parts \
   --model yolov8n.pt \
   --epochs 100 \

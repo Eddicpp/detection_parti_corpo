@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Utilities for preparing YOLO datasets for training."""
+"""Utilities for preparing YOLO datasets before training.
+
+Purpose:
+- Normalize dataset structure, create train/val split, and generate `data.yaml`.
+
+Datasets expected:
+- YOLO datasets with image/label pairs, either flat or already split layout.
+"""
 
 from __future__ import annotations
 

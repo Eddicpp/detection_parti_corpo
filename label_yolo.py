@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""
-Simple YOLO labeler for body-part detection.
+"""Simple YOLO labeler for body-part detection.
+
+Purpose:
+- Manually annotate body-part boxes and save labels in YOLO format.
+
+Dataset expected:
+- Local image folder in `DATASET/images`; labels are saved to `DATASET/labels`.
 
 Classes:
 0 -> testa

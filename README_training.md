@@ -13,12 +13,14 @@ pip install ultralytics pyyaml
 
 ## Script 1: Training locale con CUDA
 
-File: `train_local_cuda.py`
+File: `train_hierarchical.py`
 
 Esempio:
 
 ```bash
-python train_local_cuda.py \
+python train_hierarchical.py \
+  --dataset-dir-stage1 dataset/standardized_datasets/hierarchical/person_stage \
+  --dataset-dir-stage2 dataset/standardized_datasets/hierarchical/parts_stage \
   --dataset-dir dataset \
   --model yolov8n.pt \
   --epochs 120 \
@@ -32,7 +34,7 @@ Output pesi migliori:
 
 ## Script 2: Training su Kaggle GPU
 
-File: `train_kaggle.py`
+File: `train_hierarchical.py`
 
 1. Carica il tuo dataset su Kaggle come Dataset (con cartella `dataset`).
 2. Apri un Notebook Kaggle e abilita `Accelerator: GPU`.
@@ -45,7 +47,9 @@ File: `train_kaggle.py`
 4. Avvia training:
 
 ```python
-!python train_kaggle.py \
+!python train_hierarchical.py \
+  --dataset-dir-stage1 /kaggle/input/hierarchical-dataset/person_stage \
+  --dataset-dir-stage2 /kaggle/input/hierarchical-dataset/parts_stage \
   --dataset-dir /kaggle/input/<nome-dataset>/dataset \
   --epochs 100 \
   --imgsz 640 \

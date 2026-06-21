@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""
-Standardize COCO dataset to YOLO format, filtering for body part classes only.
-Supports both COCO keypoint format and COCO detection format.
+"""Convert COCO person keypoints annotations into a YOLO body-parts dataset.
+
+Purpose:
+- Extract only body-part targets (testa, mano, busto) from COCO keypoints.
+
+Dataset expected:
+- COCO-style images + JSON annotations (person keypoints).
 
 Classes to keep:
 0 -> testa (head/face keypoint)

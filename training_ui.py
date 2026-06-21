@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""Streamlit UI for YOLO training control and monitoring."""
+"""Streamlit UI to train and inspect hierarchical YOLO models.
+
+Purpose:
+- Configure and launch hierarchical training (stage 1 person, stage 2 body parts).
+- Show run metrics and a visual prediction preview on validation images.
+
+Datasets expected:
+- Stage 1 YOLO dataset: person detection in `person_stage` (single class `person`).
+- Stage 2 YOLO dataset: body-part detection in `parts_stage` (cropped person images).
+"""
 
 from __future__ import annotations
 
@@ -8,7 +17,9 @@ import sys
 from pathlib import Path
 from typing import List
 
+import cv2
 import streamlit as st
+from ultralytics import YOLO
 
 try:
     import pandas as pd
@@ -17,8 +28,8 @@ except Exception:  # pragma: no cover - optional dependency fallback
 
 
 ROOT_DIR = Path(__file__).resolve().parent
-LOCAL_TRAIN_SCRIPT = ROOT_DIR / "train_local_cuda.py"
-KAGGLE_TRAIN_SCRIPT = "train_kaggle.py"
+LOCAL_TRAIN_SCRIPT = ROOT_DIR / "train_hierarchical.py"
+KAGGLE_TRAIN_SCRIPT = "train_hierarchical.py"
 
 
 def default_run_name() -> str:
@@ -29,8 +40,10 @@ def build_local_command(params: dict) -> List[str]:
     return [
         sys.executable,
         str(LOCAL_TRAIN_SCRIPT),
-        "--dataset-dir",
-        params["dataset_dir"],
+        "--dataset-dir-stage1",
+        params["dataset_dir_stage1"],
+        "--dataset-dir-stage2",
+        params["dataset_dir_stage2"],
         "--model",
         params["model"],
         "--epochs",
@@ -47,12 +60,12 @@ def build_local_command(params: dict) -> List[str]:
         str(params["val_fraction"]),
         "--seed",
         str(params["seed"]),
-        "--max-images",
-        str(params["max_images"]),
         "--project",
         params["project"],
         "--name",
         params["name"],
+        "--stage",
+        params["stage"],
     ]
 
 
@@ -61,7 +74,8 @@ def build_kaggle_snippet(params: dict) -> str:
         "!pip install -q ultralytics pyyaml\n"
         "!python "
         f"{KAGGLE_TRAIN_SCRIPT} "
-        f"--dataset-dir {params['kaggle_dataset_dir']} "
+        f"--dataset-dir-stage1 {params['kaggle_dataset_dir_stage1']} "
+        f"--dataset-dir-stage2 {params['kaggle_dataset_dir_stage2']} "
         f"--model {params['model']} "
         f"--epochs {params['epochs']} "
         f"--imgsz {params['imgsz']} "
@@ -70,18 +84,17 @@ def build_kaggle_snippet(params: dict) -> str:
         f"--device {params['device']} "
         f"--val-fraction {params['val_fraction']} "
         f"--seed {params['seed']} "
-        f"--max-images {params['max_images']} "
         f"--project {params['kaggle_project']} "
-        f"--name {params['name']}"
+        f"--name {params['name']} "
+        f"--stage {params['stage']}"
     )
 
 
-def render_results(project: str, name: str) -> None:
-    run_dir = ROOT_DIR / project / name
+def render_results(run_dir: Path, title: str) -> None:
     results_csv = run_dir / "results.csv"
     best_weights = run_dir / "weights" / "best.pt"
 
-    st.subheader("Risultati")
+    st.subheader(title)
     st.write(f"Run directory: {run_dir}")
     st.write(f"Best weights: {best_weights}")
 
@@ -108,6 +121,50 @@ def render_results(project: str, name: str) -> None:
     existing_metrics = [m for m in metric_candidates if m in df.columns]
     if existing_metrics:
         st.line_chart(df[existing_metrics])
+
+
+def _iter_image_files(folder: Path) -> List[Path]:
+    exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+    return sorted([p for p in folder.glob("**/*") if p.is_file() and p.suffix.lower() in exts])
+
+
+def render_prediction_preview(run_dir: Path, val_images_dir: Path, max_preview_images: int = 10) -> None:
+    best_weights = run_dir / "weights" / "best.pt"
+
+    st.subheader("Preview predizioni")
+
+    if not best_weights.exists():
+        st.info("best.pt non trovato: impossibile generare preview predizioni.")
+        return
+
+    if not val_images_dir.exists():
+        st.info("Cartella immagini validation non trovata.")
+        return
+
+    image_paths = _iter_image_files(val_images_dir)
+    if not image_paths:
+        st.info("Nessuna immagine trovata nel validation set preparato.")
+        return
+
+    image_paths = image_paths[:max_preview_images]
+
+    try:
+        model = YOLO(str(best_weights))
+        results = model.predict(
+            source=[str(p) for p in image_paths],
+            conf=0.1,
+            verbose=False,
+        )
+    except Exception as exc:  # pragma: no cover - runtime dependency path
+        st.error(f"Errore durante la preview delle predizioni: {exc}")
+        return
+
+    cols = st.columns(2)
+    for idx, result in enumerate(results):
+        plotted = result.plot()
+        rgb_image = cv2.cvtColor(plotted, cv2.COLOR_BGR2RGB)
+        with cols[idx % 2]:
+            st.image(rgb_image, caption=Path(result.path).name, use_container_width=True)
 
 
 def run_local_training(params: dict) -> int:
@@ -143,6 +200,40 @@ def run_local_training(params: dict) -> int:
     return return_code
 
 
+def render_locale_mode(params: dict) -> None:
+    st.info("La modalita locale esegue train_hierarchical.py direttamente da questa UI (CPU/CUDA).")
+    if not params["start"]:
+        return
+
+    rc = run_local_training(params)
+    if rc != 0:
+        return
+
+    project_root = ROOT_DIR / params["project"]
+    run_name = params["name"]
+    stage = params["stage"]
+
+    if stage in ("1", "both"):
+        render_results(project_root / "stage1_person" / run_name, "Risultati Stage 1 (Person)")
+
+    if stage in ("2", "both"):
+        stage2_run_dir = project_root / "stage2_parts" / run_name
+        render_results(stage2_run_dir, "Risultati Stage 2 (Parts)")
+        render_prediction_preview(
+            stage2_run_dir,
+            ROOT_DIR / params["dataset_dir_stage2"] / "images" / "val",
+            max_preview_images=10,
+        )
+
+
+def render_kaggle_mode(params: dict) -> None:
+    st.info("La modalita Kaggle genera il comando train_hierarchical.py pronto da incollare in un notebook.")
+    snippet = build_kaggle_snippet(params)
+    st.code(snippet, language="python")
+    if params["start"]:
+        st.success("Comando Kaggle pronto. Copialo nel notebook Kaggle con GPU attiva.")
+
+
 def main() -> None:
     st.set_page_config(page_title="YOLO Trainer UI", layout="wide")
     st.title("YOLO Body Parts Trainer")
@@ -152,8 +243,22 @@ def main() -> None:
         st.header("Configurazione")
         mode = st.radio("Modalita", ["Locale", "Kaggle"], index=0)
 
-        dataset_dir = st.text_input("Dataset dir (locale)", "dataset/standardized_datasets/unified_body_parts")
-        kaggle_dataset_dir = st.text_input("Dataset dir (Kaggle)", "/kaggle/input/body-parts-dataset/dataset")
+        dataset_dir_stage1 = st.text_input(
+            "Dataset stage1 (locale)",
+            "dataset/standardized_datasets/hierarchical/person_stage",
+        )
+        dataset_dir_stage2 = st.text_input(
+            "Dataset stage2 (locale)",
+            "dataset/standardized_datasets/hierarchical/parts_stage",
+        )
+        kaggle_dataset_dir_stage1 = st.text_input(
+            "Dataset stage1 (Kaggle)",
+            "/kaggle/input/hierarchical-dataset/person_stage",
+        )
+        kaggle_dataset_dir_stage2 = st.text_input(
+            "Dataset stage2 (Kaggle)",
+            "/kaggle/input/hierarchical-dataset/parts_stage",
+        )
         model = st.selectbox(
             "Modello base",
             [
@@ -183,25 +288,20 @@ def main() -> None:
             device_choice = st.selectbox("Device", ["0", "cpu"], index=0)
 
         val_fraction = st.slider("Validation fraction", min_value=0.05, max_value=0.5, value=0.2, step=0.01)
+        stage = st.selectbox("Stage", ["both", "1", "2"], index=0)
         seed = st.number_input("Seed", min_value=0, max_value=100000, value=42, step=1)
-        max_images = st.number_input(
-            "Numero immagini da usare",
-            min_value=1,
-            max_value=1_000_000,
-            value=5000,
-            step=1,
-            help="Limita il dataset per run rapidi. Aumenta per training completo.",
-        )
 
-        project = st.text_input("Project output (locale)", "runs/body_parts")
-        kaggle_project = st.text_input("Project output (Kaggle)", "/kaggle/working/runs/body_parts")
+        project = st.text_input("Project output (locale)", "runs")
+        kaggle_project = st.text_input("Project output (Kaggle)", "/kaggle/working/runs")
         name = st.text_input("Run name", default_run_name())
 
         start = st.button("Avvia training", type="primary")
 
     params = {
-        "dataset_dir": dataset_dir,
-        "kaggle_dataset_dir": kaggle_dataset_dir,
+        "dataset_dir_stage1": dataset_dir_stage1,
+        "dataset_dir_stage2": dataset_dir_stage2,
+        "kaggle_dataset_dir_stage1": kaggle_dataset_dir_stage1,
+        "kaggle_dataset_dir_stage2": kaggle_dataset_dir_stage2,
         "model": model,
         "epochs": epochs,
         "imgsz": imgsz,
@@ -209,11 +309,12 @@ def main() -> None:
         "workers": workers,
         "device": device_choice,
         "val_fraction": round(val_fraction, 4),
+        "stage": stage,
         "seed": int(seed),
-        "max_images": int(max_images),
         "project": project,
         "kaggle_project": kaggle_project,
         "name": name,
+        "start": start,
     }
 
     left, right = st.columns([2, 1])
@@ -223,17 +324,9 @@ def main() -> None:
         st.json(params)
 
         if mode == "Locale":
-            st.info("La modalita locale esegue train_local_cuda.py direttamente da questa UI (CPU/CUDA).")
-            if start:
-                rc = run_local_training(params)
-                if rc == 0:
-                    render_results(project, name)
+            render_locale_mode(params)
         else:
-            st.info("La modalita Kaggle genera il comando pronto da incollare in un notebook Kaggle.")
-            snippet = build_kaggle_snippet(params)
-            st.code(snippet, language="python")
-            if start:
-                st.success("Comando Kaggle pronto. Copialo nel notebook Kaggle con GPU attiva.")
+            render_kaggle_mode(params)
 
     with right:
         st.subheader("Come funziona")
